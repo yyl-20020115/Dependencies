@@ -1,12 +1,11 @@
 ﻿using Dependencies.ClrPh;
 using System.Diagnostics;
-using System.Xml.Linq;
 
 namespace BridgeBuilder
 {
-    internal class Program
+    public class Program
     {
-        static HashSet<string> PrivateFunctions = new HashSet<string>()
+        public static HashSet<string> PrivateFunctions = new()
         {
             "DllCanUnloadNow",
             "DllGetClassObject",
@@ -15,9 +14,9 @@ namespace BridgeBuilder
             "DllUnregisterServer"
         };
 
-        const string clname = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x86\\cl.exe";
-        const string clargs = "__NAME__.cpp /W4 /O2 /Ob2 /Oi /Ot /Oy /GT /GL /GF /GS- /Gy /fp:fast /GR- /LD /link /LARGEADDRESSAWARE /OPT:REF /OPT:ICF /LTCG /PDB:\"__NAME__.pdb\" /def:__NAME__.def /DEBUG /DLL /MACHINE:X86 /NODEFAULTLIB /entry:DllMain /subsystem:windows /IMPLIB:__NAME__.imp.lib kernel32.lib";
-        const string ProgramHeader = """
+        public const string clname = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Tools\\MSVC\\14.29.30133\\bin\\Hostx64\\x86\\cl.exe";
+        public const string clargs = "__NAME__.cpp /W4 /O2 /Ob2 /Oi /Ot /Oy /GT /GL /GF /GS- /Gy /fp:fast /GR- /LD /link /LARGEADDRESSAWARE /OPT:REF /OPT:ICF /LTCG /PDB:\"__NAME__.pdb\" /def:__NAME__.def /DEBUG /DLL /MACHINE:X86 /NODEFAULTLIB /entry:DllMain /subsystem:windows /IMPLIB:__NAME__.imp.lib kernel32.lib";
+        public const string ProgramHeader = """
             #include "stdafx.h"
             #pragma pack(1)
 
@@ -50,7 +49,7 @@ namespace BridgeBuilder
             
 
             """;
-        const string ProgramTailer = """
+        public const string ProgramTailer = """
             	}
             	if (reason == DLL_PROCESS_DETACH)
             	{
@@ -61,7 +60,8 @@ namespace BridgeBuilder
             }
             
             """;
-        static int Main(string[] args)
+        public const bool use32 = true;
+        public static int Main(string[] args)
         {
             if (args.Length == 0)
             {
@@ -69,38 +69,31 @@ namespace BridgeBuilder
             }
             else
             {
-                var pe_path = Path.Combine(Environment.CurrentDirectory,args[0]);
-                if(!File.Exists(pe_path))
+                var pe_path = Path.Combine(Environment.CurrentDirectory, args[0]);
+                if (!File.Exists(pe_path)) return -1;
+                var pe = new PE(pe_path);
+                if (pe.Load())
                 {
-                    return -1;
-                }
-                PE pe=new (pe_path);
-                if(pe.Load())
-                {
-                    const bool use32 = true;
                     var syspath = Environment.SystemDirectory.ToUpper();
-                    if (use32 && syspath.EndsWith("\\SYSTEM32"))
-                    {
-                        syspath = Path.Combine(Path.GetDirectoryName(syspath), "SysWOW64");
-                    }
-                    var impexps = new Dictionary<string,List<PeExport>>();
+                    if (use32 && syspath.EndsWith("SYSTEM32"))
+                        syspath = Path.Combine(Path.GetDirectoryName(syspath) ?? "", "SysWOW64");
+
+                    var impexps = new Dictionary<string, List<PeExport>>();
                     var imps = pe.GetImports();
-                    foreach(var imp in imps)
+                    foreach (var imp in imps)
                     {
                         var path = Path.Combine(syspath, imp.Name);
                         var dll = new PE(path);
                         if (dll.Load())
                         {
-                            var exps = dll.GetExports();
-                            impexps.Add(imp.Name, exps);
-
+                            impexps.Add(imp.Name, dll.GetExports());
                             dll.Unload();
                         }
                     }
                     pe.Unload();
                     foreach (var imp in imps)
                     {
-                        if(impexps.TryGetValue(imp.Name, out var exps))
+                        if (impexps.TryGetValue(imp.Name, out var exps))
                         {
                             var name = Path.GetFileNameWithoutExtension(imp.Name);
                             var dn = Path.Combine(Environment.CurrentDirectory, name + ".dll");
@@ -148,14 +141,14 @@ namespace BridgeBuilder
                                             funcname = "F_" + funcordinal;
                                         }
 
-                                        var bridged_funcname = funcname.Replace('?','_').Replace('@','_').Replace('$', '_');
+                                        var bridged_funcname = funcname.Replace('?', '_').Replace('@', '_').Replace('$', '_');
                                         var tail = "";
                                         if (PrivateFunctions.Contains(funcname))
                                         {
                                             tail = "PRIVATE";
                                         }
 
-                                        if (funcordinal == 0 || tail!="")
+                                        if (funcordinal == 0 || tail != "")
                                         {
                                             defwriter.WriteLine($"{funcname}=__BRIDGE_{bridged_funcname} {tail}");
                                         }
@@ -163,7 +156,6 @@ namespace BridgeBuilder
                                         {
                                             defwriter.WriteLine($"{funcname}=__BRIDGE_{bridged_funcname} @{funcordinal} {tail}");
                                         }
-                                        //Console.WriteLine($"Processing {bridged_funcname}");
                                         codewriter.WriteLine($"extern \"C\" __declspec(naked) void __stdcall __BRIDGE_{bridged_funcname}()");
                                         codewriter.WriteLine("{");
                                         codewriter.WriteLine("\t__asm");
@@ -175,8 +167,8 @@ namespace BridgeBuilder
 
                                 }
                             }
-                            using var ret = Process.Start(clname,clargs.Replace("__NAME__", 
-                                Path.Combine(Environment.CurrentDirectory,name)));
+                            using var ret = Process.Start(clname, clargs.Replace("__NAME__",
+                                Path.Combine(Environment.CurrentDirectory, name)));
                             ret.WaitForExit();
                             //copy dll from system to ".org.dll"
                             if (File.Exists(source_dll_path))
@@ -189,11 +181,7 @@ namespace BridgeBuilder
                             }
                         }
                     }
-                   
                 }
-
-
-            
             }
             return 0;
         }
