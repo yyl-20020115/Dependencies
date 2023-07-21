@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "BridgeBuilder": {
+      "commandName": "Project",
+      "commandLineArgs": "xx.dll",
+      "workingDirectory": "c:\\working\\crack"
+    }
+  }
+}
